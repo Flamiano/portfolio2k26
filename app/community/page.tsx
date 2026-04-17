@@ -150,7 +150,6 @@ export default function CommunityPage() {
             .on("postgres_changes", { event: "*", schema: "public", table: "likes" }, () => fetchPosts())
             .on("postgres_changes", { event: "*", schema: "public", table: "comments" }, (payload: any) => {
                 fetchPosts();
-                // If comments section is open for this post, refresh it
                 const postId = payload.new?.post_id || payload.old?.post_id;
                 if (postId && openComments.has(postId)) {
                     fetchComments(postId);
@@ -176,7 +175,6 @@ export default function CommunityPage() {
             return;
         }
 
-        // Fetch profiles for comment authors
         const userIds = [...new Set((commentsData || []).map((c: any) => c.user_id))];
         let profileMap: Record<string, any> = {};
         if (userIds.length > 0) {
