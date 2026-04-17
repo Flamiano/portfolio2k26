@@ -50,10 +50,12 @@ export default function AuthModal({ isOpen, onClose, defaultMode = "signin" }: A
         setLoading(true);
         setError("");
 
+        const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || window.location.origin;
+
         const { error } = await supabase.auth.signInWithOAuth({
             provider: "google",
             options: {
-                redirectTo: `${window.location.origin}/api/auth/callback`,
+                redirectTo: `${siteUrl}/api/auth/callback`,
                 queryParams: {
                     access_type: 'offline',
                     prompt: 'select_account',
@@ -69,43 +71,25 @@ export default function AuthModal({ isOpen, onClose, defaultMode = "signin" }: A
     };
 
     const handleSubmit = async () => {
-        setError("");
-        setSuccess("");
-        setLoading(true);
+        setError(""); setSuccess(""); setLoading(true);
 
         if (mode === "signup") {
             if (!firstName.trim() || !lastName.trim() || !email.trim() || !password.trim()) {
                 const msg = "Please fill in all required fields.";
-                setError(msg);
-                toast.error(msg);
-                setLoading(false);
-                return;
+                setError(msg); toast.error(msg); setLoading(false); return;
             }
-
             if (!validateEmail(email)) {
                 const msg = "Please enter a valid email address (e.g. you@example.com).";
-                setError(msg);
-                toast.error(msg);
-                setLoading(false);
-                return;
+                setError(msg); toast.error(msg); setLoading(false); return;
             }
-
             if (password.length < 6) {
                 const msg = "Password must be at least 6 characters.";
-                setError(msg);
-                toast.error(msg);
-                setLoading(false);
-                return;
+                setError(msg); toast.error(msg); setLoading(false); return;
             }
-
             const { error } = await supabase.auth.signUp({
-                email,
-                password,
-                options: {
-                    data: { first_name: firstName, last_name: lastName, role, organization },
-                },
+                email, password,
+                options: { data: { first_name: firstName, last_name: lastName, role, organization } },
             });
-
             if (error) {
                 const msg =
                     error.message.toLowerCase().includes("already registered") ||
@@ -113,83 +97,68 @@ export default function AuthModal({ isOpen, onClose, defaultMode = "signin" }: A
                         error.message.toLowerCase().includes("email address is already")
                         ? "An account with this email already exists. Try signing in instead."
                         : error.message;
-                setError(msg);
-                toast.error(msg);
+                setError(msg); toast.error(msg);
             } else {
-                // Success: show toast, switch to sign-in after 2s
-                toast.success("Account created! Check your email to confirm, then sign in.", {
-                    duration: 4000,
-                });
+                toast.success("Account created! Check your email to confirm, then sign in.", { duration: 4000 });
                 setSuccess("✅ Check your email to confirm your account!");
-                setTimeout(() => {
-                    resetFields();
-                    setMode("signin");
-                }, 2000);
+                setTimeout(() => { resetFields(); setMode("signin"); }, 2000);
             }
-
         } else {
             if (!email.trim() || !password.trim()) {
                 const msg = "Please enter your email and password.";
-                setError(msg);
-                toast.error(msg);
-                setLoading(false);
-                return;
+                setError(msg); toast.error(msg); setLoading(false); return;
             }
-
             if (!validateEmail(email)) {
                 const msg = "Please enter a valid email address.";
-                setError(msg);
-                toast.error(msg);
-                setLoading(false);
-                return;
+                setError(msg); toast.error(msg); setLoading(false); return;
             }
-
             const { error } = await supabase.auth.signInWithPassword({ email, password });
-
             if (error) {
                 const msg =
                     error.message.toLowerCase().includes("invalid login") ||
                         error.message.toLowerCase().includes("invalid credentials")
                         ? "Incorrect email or password. Please try again."
                         : error.message;
-                setError(msg);
-                toast.error(msg);
+                setError(msg); toast.error(msg);
             } else {
                 toast.success("Welcome back! Signed in successfully.");
                 onClose();
             }
         }
-
         setLoading(false);
     };
 
-    const switchMode = (m: Mode) => {
-        setMode(m);
-        resetFields();
-    };
+    const switchMode = (m: Mode) => { setMode(m); resetFields(); };
 
     return (
         <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
-            <div className="w-full max-w-md bg-card border border-border rounded-2xl shadow-2xl p-6 relative animate-in fade-in zoom-in-95 max-h-[90vh] overflow-y-auto">
+            <div className="w-full max-w-md bg-card border border-border rounded-2xl shadow-2xl p-4 relative animate-in fade-in zoom-in-95">
 
-                <button onClick={onClose}
-                    className="absolute top-4 right-4 text-muted hover:text-foreground transition-colors">
-                    <X size={18} />
+                {/* Close */}
+                <button
+                    onClick={onClose}
+                    className="absolute top-3 right-3 text-muted hover:text-foreground transition-colors"
+                >
+                    <X size={16} />
                 </button>
 
-                <h2 className="text-xl font-bold text-foreground mb-1">
+                {/* Header */}
+                <h2 className="text-lg font-bold text-foreground mb-0.5 pr-6">
                     {mode === "signin" ? "Sign In" : "Join the Community"}
                 </h2>
-                <p className="text-xs text-muted-foreground mb-5">
+                <p className="text-[11px] text-muted-foreground mb-3">
                     {mode === "signin"
                         ? "Welcome back! Sign in to your account."
                         : "Create your free account to join discussions."}
                 </p>
 
                 {/* Google Button */}
-                <button onClick={handleGoogleSignIn} disabled={loading}
-                    className="w-full flex items-center justify-center gap-3 border border-border rounded-xl py-2.5 text-sm font-medium text-foreground hover:bg-muted/20 transition-colors mb-4">
-                    <svg width="18" height="18" viewBox="0 0 48 48">
+                <button
+                    onClick={handleGoogleSignIn}
+                    disabled={loading}
+                    className="w-full flex items-center justify-center gap-2.5 border border-border rounded-xl py-2 text-xs font-medium text-foreground hover:bg-muted/20 transition-colors mb-3"
+                >
+                    <svg width="16" height="16" viewBox="0 0 48 48">
                         <path fill="#FFC107" d="M43.6 20H24v8h11.3C33.6 33.1 29.3 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3 0 5.8 1.1 7.9 3l5.7-5.7C34.1 6.5 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20c11 0 19.7-8 19.7-20 0-1.3-.1-2.7-.1-4z" />
                         <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.5 15.1 18.9 12 24 12c3 0 5.8 1.1 7.9 3l5.7-5.7C34.1 6.5 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z" />
                         <path fill="#4CAF50" d="M24 44c5.2 0 9.9-1.9 13.4-5l-6.2-5.2C29.4 35.5 26.8 36 24 36c-5.2 0-9.6-2.9-11.3-7.1l-6.5 5C9.5 39.5 16.3 44 24 44z" />
@@ -198,96 +167,143 @@ export default function AuthModal({ isOpen, onClose, defaultMode = "signin" }: A
                     {mode === "signin" ? "Sign in with Google" : "Sign up with Google"}
                 </button>
 
-                <div className="flex items-center gap-3 mb-4">
+                {/* Divider */}
+                <div className="flex items-center gap-3 mb-3">
                     <div className="flex-1 h-px bg-border" />
-                    <span className="text-xs text-muted-foreground">or</span>
+                    <span className="text-[11px] text-muted-foreground">or</span>
                     <div className="flex-1 h-px bg-border" />
                 </div>
 
-                {/* Email Form */}
-                <div className="space-y-3">
+                {/* Form Fields */}
+                <div className="space-y-2">
                     {mode === "signup" && (
                         <div className="flex gap-2">
                             <div className="flex-1">
-                                <label className="text-xs text-muted-foreground mb-1 block">First Name <span className="text-red-500">*</span></label>
-                                <input value={firstName} onChange={(e) => setFirstName(e.target.value)} placeholder="Juan"
-                                    className="w-full bg-background border border-border rounded-xl px-3 py-2.5 text-sm text-foreground focus:outline-none focus:border-foreground/30 transition-colors" />
+                                <label className="text-[11px] text-muted-foreground mb-0.5 block">
+                                    First Name <span className="text-red-500">*</span>
+                                </label>
+                                <input
+                                    value={firstName}
+                                    onChange={(e) => setFirstName(e.target.value)}
+                                    placeholder="Juan"
+                                    className="w-full bg-background border border-border rounded-lg px-2.5 py-1.5 text-xs text-foreground focus:outline-none focus:border-foreground/30 transition-colors"
+                                />
                             </div>
                             <div className="flex-1">
-                                <label className="text-xs text-muted-foreground mb-1 block">Last Name <span className="text-red-500">*</span></label>
-                                <input value={lastName} onChange={(e) => setLastName(e.target.value)} placeholder="Dela Cruz"
-                                    className="w-full bg-background border border-border rounded-xl px-3 py-2.5 text-sm text-foreground focus:outline-none focus:border-foreground/30 transition-colors" />
+                                <label className="text-[11px] text-muted-foreground mb-0.5 block">
+                                    Last Name <span className="text-red-500">*</span>
+                                </label>
+                                <input
+                                    value={lastName}
+                                    onChange={(e) => setLastName(e.target.value)}
+                                    placeholder="Dela Cruz"
+                                    className="w-full bg-background border border-border rounded-lg px-2.5 py-1.5 text-xs text-foreground focus:outline-none focus:border-foreground/30 transition-colors"
+                                />
                             </div>
                         </div>
                     )}
+
                     <div>
-                        <label className="text-xs text-muted-foreground mb-1 block">Email Address</label>
-                        <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+                        <label className="text-[11px] text-muted-foreground mb-0.5 block">Email</label>
+                        <input
+                            type="email"
+                            value={email}
+                            onChange={(e) => setEmail(e.target.value)}
                             placeholder="you@example.com"
-                            className="w-full bg-background border border-border rounded-xl px-3 py-2.5 text-sm text-foreground focus:outline-none focus:border-foreground/30 transition-colors" />
+                            className="w-full bg-background border border-border rounded-lg px-2.5 py-1.5 text-xs text-foreground focus:outline-none focus:border-foreground/30 transition-colors"
+                        />
                     </div>
+
                     <div>
-                        <label className="text-xs text-muted-foreground mb-1 block">Password</label>
-                        <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
+                        <label className="text-[11px] text-muted-foreground mb-0.5 block">Password</label>
+                        <input
+                            type="password"
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
                             placeholder="••••••••"
                             onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
-                            className="w-full bg-background border border-border rounded-xl px-3 py-2.5 text-sm text-foreground focus:outline-none focus:border-foreground/30 transition-colors" />
+                            className="w-full bg-background border border-border rounded-lg px-2.5 py-1.5 text-xs text-foreground focus:outline-none focus:border-foreground/30 transition-colors"
+                        />
                     </div>
 
                     {mode === "signup" && (
                         <>
                             <div>
-                                <label className="text-xs text-muted-foreground mb-1.5 block">I am a <span className="text-red-500">*</span></label>
+                                <label className="text-[11px] text-muted-foreground mb-1 block">
+                                    I am a <span className="text-red-500">*</span>
+                                </label>
                                 <div className="flex gap-2">
                                     {(["Student", "Professional"] as const).map((r) => (
-                                        <button key={r} onClick={() => { setRole(r); setOrganization(""); }}
-                                            className={`flex-1 py-2.5 rounded-xl text-sm font-medium border transition-all ${role === r
-                                                ? "bg-foreground text-background border-foreground"
-                                                : "bg-background border-border text-muted-foreground hover:border-foreground/30"
-                                                }`}>
+                                        <button
+                                            key={r}
+                                            onClick={() => { setRole(r); setOrganization(""); }}
+                                            className={`flex-1 py-1.5 rounded-lg text-xs font-medium border transition-all ${role === r
+                                                    ? "bg-foreground text-background border-foreground"
+                                                    : "bg-background border-border text-muted-foreground hover:border-foreground/30"
+                                                }`}
+                                        >
                                             {r}
                                         </button>
                                     ))}
                                 </div>
                             </div>
+
                             <div>
-                                <label className="text-xs text-muted-foreground mb-1 block">
-                                    {role === "Student" ? "School / University" : "Company"} <span className="text-muted-foreground/60">(Optional)</span>
+                                <label className="text-[11px] text-muted-foreground mb-0.5 block">
+                                    {role === "Student" ? "School / University" : "Company"}{" "}
+                                    <span className="text-muted-foreground/50">(Optional)</span>
                                 </label>
-                                <input value={organization} onChange={(e) => setOrganization(e.target.value)}
+                                <input
+                                    value={organization}
+                                    onChange={(e) => setOrganization(e.target.value)}
                                     placeholder={role === "Student" ? "e.g. Bestlink College" : "e.g. Google"}
-                                    className="w-full bg-background border border-border rounded-xl px-3 py-2.5 text-sm text-foreground focus:outline-none focus:border-foreground/30 transition-colors" />
+                                    className="w-full bg-background border border-border rounded-lg px-2.5 py-1.5 text-xs text-foreground focus:outline-none focus:border-foreground/30 transition-colors"
+                                />
                             </div>
                         </>
                     )}
                 </div>
 
+                {/* Error / Success */}
                 {error && (
-                    <div className="mt-3 px-3 py-2 bg-red-500/10 border border-red-500/20 rounded-xl">
-                        <p className="text-red-500 text-xs">{error}</p>
+                    <div className="mt-2 px-2.5 py-1.5 bg-red-500/10 border border-red-500/20 rounded-lg">
+                        <p className="text-red-500 text-[11px]">{error}</p>
                     </div>
                 )}
                 {success && (
-                    <div className="mt-3 px-3 py-2 bg-green-500/10 border border-green-500/20 rounded-xl">
-                        <p className="text-green-500 text-xs">{success}</p>
+                    <div className="mt-2 px-2.5 py-1.5 bg-green-500/10 border border-green-500/20 rounded-lg">
+                        <p className="text-green-500 text-[11px]">{success}</p>
                     </div>
                 )}
 
-                <button onClick={handleSubmit} disabled={loading}
-                    className="w-full mt-4 bg-foreground text-background py-2.5 rounded-xl text-sm font-semibold hover:opacity-90 disabled:opacity-50 transition-opacity">
+                {/* Submit */}
+                <button
+                    onClick={handleSubmit}
+                    disabled={loading}
+                    className="w-full mt-3 bg-foreground text-background py-2 rounded-xl text-xs font-semibold hover:opacity-90 disabled:opacity-50 transition-opacity"
+                >
                     {loading ? "Please wait..." : mode === "signin" ? "Sign In" : "Join Community"}
                 </button>
 
-                <p className="text-center text-xs text-muted-foreground mt-4">
+                {/* Switch mode */}
+                <p className="text-center text-[11px] text-muted-foreground mt-2.5">
                     {mode === "signin" ? (
-                        <>Need an account?{" "}
-                            <button onClick={() => switchMode("signup")} className="text-foreground font-medium underline underline-offset-2">
+                        <>
+                            Need an account?{" "}
+                            <button
+                                onClick={() => switchMode("signup")}
+                                className="text-foreground font-medium underline underline-offset-2"
+                            >
                                 Register here
                             </button>
                         </>
                     ) : (
-                        <>Already have an account?{" "}
-                            <button onClick={() => switchMode("signin")} className="text-foreground font-medium underline underline-offset-2">
+                        <>
+                            Already have an account?{" "}
+                            <button
+                                onClick={() => switchMode("signin")}
+                                className="text-foreground font-medium underline underline-offset-2"
+                            >
                                 Sign in here
                             </button>
                         </>
