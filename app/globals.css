@@ -1,0 +1,85 @@
+@import url("https://fonts.googleapis.com/css2?family=Iosevka+Charon+Mono:ital,wght@0,300;0,400;0,500;0,700;1,300;1,400;1,500;1,700&family=Poppins:wght@300;400;500;600;700;800;900&display=swap");
+@import "tailwindcss";
+
+@variant dark (&:where(.dark, .dark *));
+
+:root {
+  --background: #ffffff;
+  --foreground: #111111;
+  --card: #f4f4f5;
+  --border: #e4e4e7;
+  /* High-contrast gray for Light Mode */
+  --muted-foreground: #52525b;
+  --font-mono: "Iosevka Charon Mono", monospace;
+  --font-sans: "Poppins", sans-serif;
+}
+
+.dark {
+  --background: #000000;
+  --foreground: #fafafa;
+  --card: #09090b;
+  --border: #27272a;
+  /* Softer gray for Dark Mode */
+  --muted-foreground: #a1a1aa;
+}
+
+@theme inline {
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-border: var(--border);
+  /* This allows use text-muted */
+  --color-muted: var(--muted-foreground);
+
+  @keyframes shimmer {
+    from {
+      transform: translateX(-100%);
+    }
+    to {
+      transform: translateX(100%);
+    }
+  }
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  /* Added color transition so text doesn't "snap" when switching themes */
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* Global utility for secondary/readable text */
+.text-secondary {
+  color: var(--muted-foreground);
+}
+
+.mono-text {
+  font-family: var(--font-mono);
+}
+
+.animate-shimmer {
+  animation: shimmer 2.5s infinite;
+}
+
+/* Auto Swipe Loop Infinite */
+
+@keyframes infinite-scroll {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+.animate-infinite-scroll {
+  animation: infinite-scroll 25s linear infinite;
+}
+
+/* Optional: Pause on hover */
+.group:hover .animate-infinite-scroll {
+  animation-play-state: paused;
+}
