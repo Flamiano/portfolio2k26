@@ -1,6 +1,6 @@
 "use client";
 
-import { Github, Linkedin, Mail, Calendar, ArrowUpRight, ExternalLink } from "lucide-react";
+import { Mail, Calendar, ArrowUpRight, ExternalLink } from "lucide-react"; 
 import { useEffect, useState, useCallback } from "react";
 
 export default function Footer() {
