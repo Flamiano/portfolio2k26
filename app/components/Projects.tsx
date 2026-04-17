@@ -23,12 +23,12 @@ export default function Projects() {
                 {displayed.map((project) => (
                     <div key={project.id} className="rounded-2xl border border-border bg-background overflow-hidden group">
                         <div className="w-full h-32 bg-muted/20 relative flex items-center justify-center">
-                            {!imgErrors[project.folder] ? (
+                            {!imgErrors[project.id] ? (
                                 <img
                                     src={project.landingPage}
                                     alt={project.name}
                                     className="w-full h-full object-cover"
-                                    onError={() => setImgErrors((e) => ({ ...e, [project.folder]: true }))}
+                                    onError={() => setImgErrors((e) => ({ ...e, [project.id]: true }))}
                                 />
                             ) : (
                                 <div className="absolute inset-0 bg-gradient-to-br from-card to-background flex items-center justify-center">
