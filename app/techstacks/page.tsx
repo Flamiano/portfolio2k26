@@ -19,10 +19,12 @@ const fullStack = {
     },
     "Backend & Database": {
         icon: <Database className="w-5 h-5" />,
-        items: ["PHP", "Laravel", "Node.js", "Python", "C", "Cobol", "MySQL", "PostgreSQL", "Supabase"]
+        // Added C, C++, and Java here
+        items: ["PHP", "Laravel", "Node.js", "Python", "Java", "C++", "C", "Cobol", "MySQL", "PostgreSQL", "Supabase"]
     },
     "Mobile Development": {
         icon: <Globe className="w-5 h-5" />,
+        // Java remains here for Android context
         items: ["React Native", "Kotlin", "Java", "Android Studio"]
     },
     "CMS & Marketing": {
@@ -63,7 +65,7 @@ export default function TechStacksPage() {
                 <header className="mb-10">
                     <div className="border-l-4 border-foreground pl-5 py-1">
                         <p className="text-[10px] font-bold tracking-[0.2em] text-muted uppercase mb-2 mono-text">
-                            2023–2026
+                            2021–2026
                         </p>
                         <h1 className="text-4xl md:text-5xl font-bold tracking-tighter mb-3">
                             Full Tech Stack
