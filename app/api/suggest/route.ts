@@ -5,64 +5,16 @@ const groq = new Groq({
   apiKey: process.env.GROQ_API_KEY || "",
 });
 
-const BAD_WORDS = [
-  "burat",
-  "tae",
-  "puke",
-  "gago",
-  "gaga",
-  "putang ina",
-  "putangina",
-  "tangina",
-  "punyeta",
-  "pakshet",
-  "pakshit",
-  "leche",
-  "lintik",
-  "ulol",
-  "bobo",
-  "boba",
-  "inutil",
-  "peste",
-  "fuck",
-  "shit",
-  "ass",
-  "bitch",
-  "bastard",
-  "dick",
-  "cock",
-  "pussy",
-  "cunt",
-  "fag",
-  "slut",
-  "whore",
-  "motherfucker",
-  "fucker",
-  "fucking",
-  "damn",
-];
-
-export function containsBadWords(text: string): boolean {
-  const lower = text.toLowerCase();
-  return BAD_WORDS.some((word) => {
-    const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const regex = new RegExp(`\\b${escaped}\\b`, "i");
-    return regex.test(lower) || lower.includes(word);
-  });
-}
-
 export async function POST(req: Request) {
   try {
     const { text } = await req.json();
 
+    // Basic validation
     if (!text || typeof text !== "string") {
       return NextResponse.json({ error: "Invalid input" }, { status: 400 });
     }
 
-    if (!containsBadWords(text)) {
-      return NextResponse.json({ suggestion: null, clean: true });
-    }
-
+    // Always generate — client already detected the bad words, no need to re-check here
     const response = await groq.chat.completions.create({
       model: "llama3-8b-8192",
       max_tokens: 200,
@@ -80,11 +32,12 @@ export async function POST(req: Request) {
       ],
     });
 
+    // Get the suggestion text from Groq response
     const suggestion =
       response.choices[0]?.message?.content?.trim() ??
       "Unable to generate a suggestion. Please rewrite manually.";
 
-    return NextResponse.json({ suggestion, clean: false });
+    return NextResponse.json({ suggestion });
   } catch (error: any) {
     console.error("Suggest API Error:", error?.message || error);
     return NextResponse.json(

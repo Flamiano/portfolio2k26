@@ -8,6 +8,7 @@ import { useUser } from "@/app/hooks/useUser";
 import AuthModal from "@/app/components/auth/AuthModal";
 import { toast } from "sonner";
 
+// Types
 type Comment = {
     id: string;
     post_id: string;
@@ -36,7 +37,7 @@ type Post = {
     comments_count: number;
 };
 
-/* ── Bad word filter (client-side pre-check) ── */
+// Bad words list — Filipino and English
 const BAD_WORDS = [
     "burat", "tae", "puke", "gago", "gaga", "putang ina", "putangina",
     "tangina", "punyeta", "pakshet", "pakshit", "leche", "lintik", "ulol",
@@ -45,6 +46,7 @@ const BAD_WORDS = [
     "motherfucker", "fucker", "fucking", "damn",
 ];
 
+// Check if text has bad words
 function containsBadWords(text: string): boolean {
     const lower = text.toLowerCase();
     return BAD_WORDS.some((word) => {
@@ -54,7 +56,7 @@ function containsBadWords(text: string): boolean {
     });
 }
 
-/* ── Helpers ── */
+// Format time ago (e.g. "2h", "3d")
 function timeAgo(date: string) {
     const diff = Date.now() - new Date(date).getTime();
     const mins = Math.floor(diff / 60000);
@@ -70,12 +72,14 @@ function timeAgo(date: string) {
     return "now";
 }
 
+// Hide most of the email for privacy
 function maskEmail(email: string) {
     const [local, domain] = email.split("@");
     if (local.length <= 3) return `${local[0]}***@${domain}`;
     return `${local.slice(0, 2)}${"*".repeat(local.length - 4)}${local.slice(-2)}@${domain}`;
 }
 
+// Get display name from profile
 function getDisplayName(post: Post | Comment) {
     const fn = post.profiles?.first_name;
     const ln = post.profiles?.last_name;
@@ -83,33 +87,41 @@ function getDisplayName(post: Post | Comment) {
     return "Anonymous";
 }
 
+// Get first letter for avatar
 function getAvatar(post: Post | Comment) {
     const fn = post.profiles?.first_name;
     if (fn) return fn[0].toUpperCase();
     return "?";
 }
 
-/* ── AI Suggestion hook ── */
+// Call the suggest API route and return the AI suggestion text
 async function fetchAiSuggestion(text: string): Promise<string> {
     const res = await fetch("/api/suggest", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text }),
     });
-    if (!res.ok) throw new Error("Suggest API error");
+
     const data = await res.json();
+
+    // If request failed, throw so caller can show error
+    if (!res.ok) throw new Error(data.error ?? "Suggest API error");
+
     return data.suggestion ?? "";
 }
 
-/* ── Post Form (sidebar) ── */
+
+// New post form component (shown in sidebar)
 function NewPostForm({ onSuccess }: { onSuccess: () => void }) {
     const [title, setTitle] = useState("");
     const [body, setBody] = useState("");
     const [posting, setPosting] = useState(false);
 
-    // Profanity guard state
+    // Which field has bad words
     const [titleError, setTitleError] = useState(false);
     const [bodyError, setBodyError] = useState(false);
+
+    // AI suggestion state
     const [suggestion, setSuggestion] = useState<{ field: "title" | "body"; text: string } | null>(null);
     const [loadingSuggest, setLoadingSuggest] = useState(false);
 
@@ -121,26 +133,30 @@ function NewPostForm({ onSuccess }: { onSuccess: () => void }) {
 
         const titleBad = containsBadWords(title);
         const bodyBad = containsBadWords(body);
+
         setTitleError(titleBad);
         setBodyError(bodyBad);
 
+        // If any field has bad words, block submit and get AI suggestion
         if (titleBad || bodyBad) {
             toast.error("Your post contains words that are not allowed.");
-            // Auto-suggest for whichever field triggered first
+
             const badField = titleBad ? "title" : "body";
             const badText = titleBad ? title : body;
+
             setLoadingSuggest(true);
             try {
                 const s = await fetchAiSuggestion(badText);
                 if (s) setSuggestion({ field: badField, text: s });
             } catch {
-                toast.error("Could not generate AI suggestion.");
+                toast.error("Could not generate AI suggestion. Please rewrite manually.");
             } finally {
                 setLoadingSuggest(false);
             }
             return;
         }
 
+        // No bad words — publish post
         setPosting(true);
         const { error } = await supabase.from("posts").insert({ title, body, user_id: user.id });
         if (error) {
@@ -157,6 +173,7 @@ function NewPostForm({ onSuccess }: { onSuccess: () => void }) {
         setPosting(false);
     };
 
+    // Apply AI suggestion to the flagged field
     const applySuggestion = () => {
         if (!suggestion) return;
         if (suggestion.field === "title") setTitle(suggestion.text);
@@ -166,6 +183,7 @@ function NewPostForm({ onSuccess }: { onSuccess: () => void }) {
         setBodyError(false);
     };
 
+    // Ask AI for another suggestion
     const handleRetry = async () => {
         if (!suggestion) return;
         const badText = suggestion.field === "title" ? title : body;
@@ -184,21 +202,27 @@ function NewPostForm({ onSuccess }: { onSuccess: () => void }) {
         <div className="p-4 rounded-2xl border border-border bg-card space-y-2.5">
             <p className="text-sm font-bold text-foreground">Create Post</p>
 
-            {/* Community rules notice */}
+            {/* Rules notice */}
             <div className="text-[10px] text-muted bg-background border border-border rounded-xl px-3 py-2 leading-relaxed">
-                <span className="font-semibold text-foreground">Community rules:</span> No offensive language allowed —
+                <span className="font-semibold text-foreground">Community rules:</span> No offensive language —
                 Filipino or English bad words (burat, tae, puke, gago, fuck, shit, etc.) will be blocked.
-                Our AI can suggest a cleaner version if flagged.
+                AI can suggest a cleaner version if flagged.
             </div>
 
-            {/* Title */}
+            {/* Title input */}
             <div>
                 <label className="text-[11px] text-muted mb-1 block">Title *</label>
                 <input
                     value={title}
-                    onChange={(e) => { setTitle(e.target.value); setTitleError(false); setSuggestion(null); }}
+                    onChange={(e) => {
+                        setTitle(e.target.value);
+                        setTitleError(false);
+                        setSuggestion(null);
+                    }}
                     placeholder="What's on your mind?"
-                    className={`w-full bg-background border rounded-xl px-3 py-2 text-xs text-foreground placeholder:text-muted focus:outline-none transition-colors ${titleError ? "border-red-500/60 focus:border-red-500" : "border-border focus:border-foreground/30"
+                    className={`w-full bg-background border rounded-xl px-3 py-2 text-xs text-foreground placeholder:text-muted focus:outline-none transition-colors ${titleError
+                        ? "border-red-500/60 focus:border-red-500"
+                        : "border-border focus:border-foreground/30"
                         }`}
                 />
                 {titleError && (
@@ -206,15 +230,21 @@ function NewPostForm({ onSuccess }: { onSuccess: () => void }) {
                 )}
             </div>
 
-            {/* Body */}
+            {/* Body textarea */}
             <div>
                 <label className="text-[11px] text-muted mb-1 block">Body (optional)</label>
                 <textarea
                     value={body}
-                    onChange={(e) => { setBody(e.target.value); setBodyError(false); setSuggestion(null); }}
+                    onChange={(e) => {
+                        setBody(e.target.value);
+                        setBodyError(false);
+                        setSuggestion(null);
+                    }}
                     placeholder="Add more details..."
                     rows={3}
-                    className={`w-full bg-background border rounded-xl px-3 py-2 text-xs text-foreground placeholder:text-muted focus:outline-none transition-colors resize-none ${bodyError ? "border-red-500/60 focus:border-red-500" : "border-border focus:border-foreground/30"
+                    className={`w-full bg-background border rounded-xl px-3 py-2 text-xs text-foreground placeholder:text-muted focus:outline-none transition-colors resize-none ${bodyError
+                        ? "border-red-500/60 focus:border-red-500"
+                        : "border-border focus:border-foreground/30"
                         }`}
                 />
                 {bodyError && (
@@ -222,7 +252,7 @@ function NewPostForm({ onSuccess }: { onSuccess: () => void }) {
                 )}
             </div>
 
-            {/* AI Suggestion box */}
+            {/* AI suggestion box — shows when loading or suggestion is ready */}
             {(suggestion || loadingSuggest) && (
                 <div className="rounded-xl border border-border bg-background p-3 space-y-2">
                     <div className="flex items-center gap-1.5">
@@ -231,6 +261,8 @@ function NewPostForm({ onSuccess }: { onSuccess: () => void }) {
                             AI Suggestion — {suggestion?.field ?? "..."}
                         </span>
                     </div>
+
+                    {/* Loading spinner */}
                     {loadingSuggest ? (
                         <div className="flex items-center gap-2">
                             <div className="w-3 h-3 border-2 border-border border-t-foreground rounded-full animate-spin" />
@@ -240,12 +272,14 @@ function NewPostForm({ onSuccess }: { onSuccess: () => void }) {
                         <>
                             <p className="text-xs text-foreground leading-relaxed break-words">{suggestion.text}</p>
                             <div className="flex items-center gap-2 pt-0.5">
+                                {/* Use the suggestion */}
                                 <button
                                     onClick={applySuggestion}
                                     className="text-[11px] font-semibold bg-foreground text-background px-3 py-1 rounded-full hover:opacity-80 transition-opacity"
                                 >
                                     Use this
                                 </button>
+                                {/* Get another suggestion */}
                                 <button
                                     onClick={handleRetry}
                                     className="text-[11px] text-muted hover:text-foreground transition-colors flex items-center gap-1"
@@ -253,8 +287,13 @@ function NewPostForm({ onSuccess }: { onSuccess: () => void }) {
                                     <RotateCcw className="w-2.5 h-2.5" />
                                     Retry
                                 </button>
+                                {/* Dismiss the suggestion box */}
                                 <button
-                                    onClick={() => { setSuggestion(null); setTitleError(false); setBodyError(false); }}
+                                    onClick={() => {
+                                        setSuggestion(null);
+                                        setTitleError(false);
+                                        setBodyError(false);
+                                    }}
                                     className="text-[11px] text-muted hover:text-foreground transition-colors ml-auto"
                                 >
                                     Dismiss
@@ -265,6 +304,7 @@ function NewPostForm({ onSuccess }: { onSuccess: () => void }) {
                 </div>
             )}
 
+            {/* Submit button */}
             <button
                 onClick={handlePost}
                 disabled={posting || !title.trim() || loadingSuggest}
@@ -276,7 +316,8 @@ function NewPostForm({ onSuccess }: { onSuccess: () => void }) {
     );
 }
 
-/* ── Comment Input with filter ── */
+
+// Comment input component with bad word filter + AI suggestion
 function CommentInput({
     postId,
     user,
@@ -300,6 +341,7 @@ function CommentInput({
         const text = value.trim();
         if (!text || !user) return;
 
+        // Block if bad words detected and fetch AI suggestion
         if (containsBadWords(text)) {
             setError(true);
             setLoadingSuggest(true);
@@ -307,17 +349,19 @@ function CommentInput({
                 const s = await fetchAiSuggestion(text);
                 if (s) setSuggestion(s);
             } catch {
-                toast.error("Could not generate AI suggestion.");
+                toast.error("Could not generate AI suggestion. Please rewrite manually.");
             } finally {
                 setLoadingSuggest(false);
             }
             return;
         }
 
+        // No bad words — submit comment
         setSubmitting(true);
         const { error: err } = await supabase
             .from("comments")
             .insert({ post_id: postId, user_id: user.id, body: text });
+
         if (err) {
             toast.error("Failed to post comment.");
         } else {
@@ -329,6 +373,7 @@ function CommentInput({
         setSubmitting(false);
     };
 
+    // Put suggestion into the input field
     const applySuggestion = () => {
         if (!suggestion) return;
         setValue(suggestion);
@@ -339,15 +384,22 @@ function CommentInput({
     return (
         <div className="px-4 sm:px-5 py-3 space-y-2">
             <div className="flex items-center gap-2.5">
+                {/* User avatar */}
                 <div className="w-6 h-6 rounded-full bg-muted/20 border border-border flex items-center justify-center text-[10px] font-bold text-foreground flex-shrink-0">
                     {user
                         ? (user.user_metadata?.first_name?.[0]?.toUpperCase() || user.email?.[0]?.toUpperCase() || "?")
                         : "?"}
                 </div>
+
                 <div className="flex-1 flex items-center gap-2 min-w-0">
+                    {/* Comment input */}
                     <input
                         value={value}
-                        onChange={(e) => { setValue(e.target.value); setError(false); setSuggestion(null); }}
+                        onChange={(e) => {
+                            setValue(e.target.value);
+                            setError(false);
+                            setSuggestion(null);
+                        }}
                         onKeyDown={(e) => {
                             if (e.key === "Enter" && !e.shiftKey) {
                                 e.preventDefault();
@@ -360,6 +412,8 @@ function CommentInput({
                         className={`flex-1 min-w-0 bg-card border rounded-2xl px-3 py-1.5 text-xs text-foreground placeholder:text-muted focus:outline-none transition-colors disabled:opacity-60 ${error ? "border-red-500/60" : "border-border focus:border-foreground/30"
                             }`}
                     />
+
+                    {/* Send button */}
                     <button
                         onClick={() => { if (user) handleSubmit(); else onAuthRequired(); }}
                         disabled={!value.trim() || submitting || loadingSuggest}
@@ -370,13 +424,15 @@ function CommentInput({
                 </div>
             </div>
 
-            {/* AI suggestion for comment */}
+            {/* AI suggestion box for comments */}
             {(suggestion || loadingSuggest) && (
                 <div className="ml-8 rounded-xl border border-border bg-background p-3 space-y-2">
                     <div className="flex items-center gap-1.5">
                         <Sparkles className="w-3 h-3 text-blue-500 flex-shrink-0" />
                         <span className="text-[10px] font-bold tracking-widest text-muted uppercase mono-text">AI Suggestion</span>
                     </div>
+
+                    {/* Loading state */}
                     {loadingSuggest ? (
                         <div className="flex items-center gap-2">
                             <div className="w-3 h-3 border-2 border-border border-t-foreground rounded-full animate-spin" />
@@ -386,12 +442,14 @@ function CommentInput({
                         <>
                             <p className="text-xs text-foreground leading-relaxed break-words">{suggestion}</p>
                             <div className="flex items-center gap-2">
+                                {/* Use suggestion */}
                                 <button
                                     onClick={applySuggestion}
                                     className="text-[11px] font-semibold bg-foreground text-background px-3 py-1 rounded-full hover:opacity-80 transition-opacity"
                                 >
                                     Use this
                                 </button>
+                                {/* Dismiss */}
                                 <button
                                     onClick={() => { setSuggestion(null); setError(false); }}
                                     className="text-[11px] text-muted hover:text-foreground transition-colors ml-auto"
@@ -407,7 +465,8 @@ function CommentInput({
     );
 }
 
-/* ── Main Page ── */
+
+// Main community page
 export default function CommunityPage() {
     const { user, signOut } = useUser();
     const [posts, setPosts] = useState<Post[]>([]);
@@ -424,6 +483,7 @@ export default function CommunityPage() {
 
     const supabase = createClient();
 
+    // Fetch all posts with likes and comment counts
     const fetchPosts = useCallback(async () => {
         const { data: postsData, error } = await supabase
             .from("posts")
@@ -432,6 +492,7 @@ export default function CommunityPage() {
 
         if (error) { console.error("fetchPosts error:", error.message); return; }
 
+        // Get profiles for all post authors
         const userIds = [...new Set((postsData || []).map((p: any) => p.user_id))];
         const { data: profilesData } = await supabase
             .from("profiles")
@@ -448,10 +509,13 @@ export default function CommunityPage() {
             comments_count: p.comments?.length ?? 0,
         }));
 
+        // Sort by likes if on Most Discussed tab
         if (tab === "discussed") mapped.sort((a, b) => b.likes_count - a.likes_count);
+
         setPosts(mapped);
     }, [user, tab]);
 
+    // Get total registered users count
     const fetchStats = useCallback(async () => {
         const { count } = await supabase.from("profiles").select("*", { count: "exact", head: true });
         setTotalUsers(count || 0);
@@ -459,6 +523,7 @@ export default function CommunityPage() {
 
     useEffect(() => { fetchPosts(); fetchStats(); }, [fetchPosts, fetchStats]);
 
+    // Realtime subscription for posts, likes, and comments
     useEffect(() => {
         const channel = supabase
             .channel("community-realtime")
@@ -473,10 +538,15 @@ export default function CommunityPage() {
         return () => { supabase.removeChannel(channel); };
     }, [fetchPosts, openComments]);
 
+    // Fetch comments for a specific post
     const fetchComments = async (postId: string) => {
         setLoadingComments((prev) => new Set(prev).add(postId));
+
         const { data: commentsData, error } = await supabase
-            .from("comments").select("*").eq("post_id", postId).order("created_at", { ascending: true });
+            .from("comments")
+            .select("*")
+            .eq("post_id", postId)
+            .order("created_at", { ascending: true });
 
         if (error) {
             console.error("fetchComments error:", error.message);
@@ -484,53 +554,99 @@ export default function CommunityPage() {
             return;
         }
 
+        // Get profiles for all commenters
         const userIds = [...new Set((commentsData || []).map((c: any) => c.user_id))];
         let profileMap: Record<string, any> = {};
         if (userIds.length > 0) {
             const { data: profilesData } = await supabase
-                .from("profiles").select("id, first_name, last_name").in("id", userIds);
+                .from("profiles")
+                .select("id, first_name, last_name")
+                .in("id", userIds);
             profileMap = Object.fromEntries((profilesData || []).map((p: any) => [p.id, p]));
         }
 
-        const mapped: Comment[] = (commentsData || []).map((c: any) => ({ ...c, profiles: profileMap[c.user_id] ?? null }));
+        const mapped: Comment[] = (commentsData || []).map((c: any) => ({
+            ...c,
+            profiles: profileMap[c.user_id] ?? null,
+        }));
+
         setComments((prev) => ({ ...prev, [postId]: mapped }));
         setLoadingComments((prev) => { const s = new Set(prev); s.delete(postId); return s; });
     };
 
+    // Toggle comment section open/closed
     const toggleComments = async (postId: string) => {
         const isOpen = openComments.has(postId);
-        setOpenComments((prev) => { const s = new Set(prev); isOpen ? s.delete(postId) : s.add(postId); return s; });
+        setOpenComments((prev) => {
+            const s = new Set(prev);
+            isOpen ? s.delete(postId) : s.add(postId);
+            return s;
+        });
+        // Only fetch comments when opening for the first time
         if (!isOpen && !comments[postId]) await fetchComments(postId);
     };
 
+    // Delete a comment (owner only)
     const handleDeleteComment = async (comment: Comment) => {
         if (!user || user.id !== comment.user_id) return;
-        const { error } = await supabase.from("comments").delete().eq("id", comment.id).eq("user_id", user.id);
-        if (error) { toast.error("Failed to delete comment."); }
-        else {
-            setComments((prev) => ({ ...prev, [comment.post_id]: (prev[comment.post_id] || []).filter((c) => c.id !== comment.id) }));
+        const { error } = await supabase
+            .from("comments")
+            .delete()
+            .eq("id", comment.id)
+            .eq("user_id", user.id);
+
+        if (error) {
+            toast.error("Failed to delete comment.");
+        } else {
+            setComments((prev) => ({
+                ...prev,
+                [comment.post_id]: (prev[comment.post_id] || []).filter((c) => c.id !== comment.id),
+            }));
             fetchPosts();
         }
     };
 
+    // Delete a post (owner only)
     const handleDelete = async (post: Post) => {
         if (!user || user.id !== post.user_id) return;
         setDeletingId(post.id);
-        const { error } = await supabase.from("posts").delete().eq("id", post.id).eq("user_id", user.id);
-        if (error) { toast.error("Failed to delete post."); }
-        else { toast.success("Post deleted."); setPosts((prev) => prev.filter((p) => p.id !== post.id)); }
+        const { error } = await supabase
+            .from("posts")
+            .delete()
+            .eq("id", post.id)
+            .eq("user_id", user.id);
+
+        if (error) {
+            toast.error("Failed to delete post.");
+        } else {
+            toast.success("Post deleted.");
+            setPosts((prev) => prev.filter((p) => p.id !== post.id));
+        }
         setDeletingId(null);
     };
 
+    // Like or unlike a post (optimistic update)
     const handleLike = async (post: Post) => {
         if (!user) { setAuthMode("signin"); setAuthOpen(true); return; }
+
+        // Update UI immediately before DB call
         setPosts((prev) =>
-            prev.map((p) => p.id === post.id
-                ? { ...p, liked_by_me: !post.liked_by_me, likes_count: post.liked_by_me ? p.likes_count - 1 : p.likes_count + 1 }
-                : p)
+            prev.map((p) =>
+                p.id === post.id
+                    ? {
+                        ...p,
+                        liked_by_me: !post.liked_by_me,
+                        likes_count: post.liked_by_me ? p.likes_count - 1 : p.likes_count + 1,
+                    }
+                    : p
+            )
         );
-        if (post.liked_by_me) { await supabase.from("likes").delete().eq("post_id", post.id).eq("user_id", user.id); }
-        else { await supabase.from("likes").insert({ post_id: post.id, user_id: user.id }); }
+
+        if (post.liked_by_me) {
+            await supabase.from("likes").delete().eq("post_id", post.id).eq("user_id", user.id);
+        } else {
+            await supabase.from("likes").insert({ post_id: post.id, user_id: user.id });
+        }
     };
 
     const isGoogleUser = user?.app_metadata?.provider === "google";
@@ -539,7 +655,7 @@ export default function CommunityPage() {
         <div className="min-h-screen bg-background text-foreground selection:bg-zinc-200 dark:selection:bg-zinc-800 pb-20">
             <div className="max-w-5xl mx-auto px-4 sm:px-6">
 
-                {/* ── Navigation ── */}
+                {/* Navigation */}
                 <nav className="flex items-center justify-between py-8">
                     <Link
                         href="/"
@@ -558,7 +674,7 @@ export default function CommunityPage() {
                     )}
                 </nav>
 
-                {/* ── Header ── */}
+                {/* Page header */}
                 <header className="mb-10">
                     <div className="border-l-4 border-foreground pl-5 py-1">
                         <p className="text-[10px] font-bold tracking-[0.2em] text-muted uppercase mb-2 mono-text">
@@ -572,6 +688,7 @@ export default function CommunityPage() {
                         </p>
                     </div>
 
+                    {/* Stats pills */}
                     <div className="flex flex-wrap gap-3 mt-8">
                         <div className="px-4 py-2.5 rounded-full border border-border bg-card text-xs font-medium flex items-center gap-2">
                             <span className="flex h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
@@ -596,13 +713,13 @@ export default function CommunityPage() {
                     </div>
                 </header>
 
-                {/* ── Layout ── */}
+                {/* Main layout — sidebar + feed */}
                 <div className="flex flex-col lg:flex-row gap-5 items-start w-full min-w-0">
 
                     {/* Sidebar */}
                     <aside className="w-full lg:w-[260px] xl:w-[280px] lg:flex-shrink-0 space-y-3 lg:sticky lg:top-8 min-w-0">
 
-                        {/* Auth card */}
+                        {/* Auth / user card */}
                         <div className="p-4 rounded-2xl border border-border bg-card">
                             {user ? (
                                 <>
@@ -643,12 +760,12 @@ export default function CommunityPage() {
                             )}
                         </div>
 
-                        {/* New post form (extracted component) */}
+                        {/* New post form — visible after clicking "+ New Post" */}
                         {showNewPost && user && (
                             <NewPostForm onSuccess={() => setShowNewPost(false)} />
                         )}
 
-                        {/* Hub Stats */}
+                        {/* Hub stats card */}
                         <div className="p-4 rounded-2xl border border-border bg-card">
                             <p className="text-[10px] font-bold tracking-[0.2em] text-muted uppercase mb-3 mono-text">Hub Stats</p>
                             <div className="space-y-2">
@@ -665,10 +782,10 @@ export default function CommunityPage() {
                         </div>
                     </aside>
 
-                    {/* Feed */}
+                    {/* Posts feed */}
                     <main className="w-full lg:flex-1 min-w-0 space-y-3">
 
-                        {/* Tabs */}
+                        {/* Tab switcher */}
                         <div className="flex gap-5 border-b border-border pb-3">
                             {(["latest", "discussed"] as const).map((t) => (
                                 <button
@@ -689,6 +806,7 @@ export default function CommunityPage() {
                             Global Feed
                         </div>
 
+                        {/* Empty state */}
                         {posts.length === 0 ? (
                             <div className="p-10 rounded-2xl border border-border bg-card text-center">
                                 <p className="text-muted text-sm">No posts yet.</p>
@@ -702,9 +820,11 @@ export default function CommunityPage() {
                                 const isLoadingComments = loadingComments.has(post.id);
 
                                 return (
-                                    <div key={post.id} className="rounded-2xl border border-border bg-card hover:border-foreground/20 transition-all overflow-hidden w-full">
-
-                                        {/* Post content */}
+                                    <div
+                                        key={post.id}
+                                        className="rounded-2xl border border-border bg-card hover:border-foreground/20 transition-all overflow-hidden w-full"
+                                    >
+                                        {/* Post body */}
                                         <div className="p-4 sm:p-5">
 
                                             {/* Author row */}
@@ -718,6 +838,7 @@ export default function CommunityPage() {
                                                             <span className="text-xs font-semibold text-foreground truncate max-w-[140px] sm:max-w-[220px]">
                                                                 {getDisplayName(post)}
                                                             </span>
+                                                            {/* Verified badge */}
                                                             <svg className="w-3 h-3 text-blue-500 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
                                                                 <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                                                             </svg>
@@ -735,6 +856,8 @@ export default function CommunityPage() {
                                                         </div>
                                                     </div>
                                                 </div>
+
+                                                {/* Delete button — only visible to post owner */}
                                                 {isOwner && (
                                                     <button
                                                         onClick={() => handleDelete(post)}
@@ -746,13 +869,13 @@ export default function CommunityPage() {
                                                 )}
                                             </div>
 
-                                            {/* Title & body */}
+                                            {/* Title and body */}
                                             <h3 className="font-bold text-foreground mb-1 leading-snug text-sm break-words">{post.title}</h3>
                                             {post.body && (
                                                 <p className="text-xs text-muted line-clamp-3 leading-relaxed break-words">{post.body}</p>
                                             )}
 
-                                            {/* Reaction bar */}
+                                            {/* Like and comment buttons */}
                                             <div className="flex items-center gap-4 mt-3 pt-3 border-t border-border">
                                                 <button
                                                     onClick={() => handleLike(post)}
@@ -771,11 +894,11 @@ export default function CommunityPage() {
                                             </div>
                                         </div>
 
-                                        {/* Comments section */}
+                                        {/* Comments section — shown when toggled open */}
                                         {commentsOpen && (
                                             <div className="border-t border-border bg-background/50">
 
-                                                {/* Comment input (extracted component with filter) */}
+                                                {/* Comment input with filter */}
                                                 <CommentInput
                                                     postId={post.id}
                                                     user={user}
@@ -815,6 +938,7 @@ export default function CommunityPage() {
                                                                         </div>
                                                                         <div className="flex items-center gap-2.5 mt-0.5 px-1">
                                                                             <span className="text-[10px] text-muted mono-text">{timeAgo(comment.created_at)}</span>
+                                                                            {/* Delete comment — only visible on hover, owner only */}
                                                                             {isMyComment && (
                                                                                 <button
                                                                                     onClick={() => handleDeleteComment(comment)}
@@ -845,7 +969,7 @@ export default function CommunityPage() {
     );
 }
 
-/* ── Inline SVG helpers ── */
+// Google colored SVG icon
 function GoogleSVG({ size = 14 }: { size?: number }) {
     return (
         <svg width={size} height={size} viewBox="0 0 48 48" style={{ flexShrink: 0 }}>
@@ -857,6 +981,7 @@ function GoogleSVG({ size = 14 }: { size?: number }) {
     );
 }
 
+// Simple user icon SVG
 function UserSVG() {
     return (
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
