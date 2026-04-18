@@ -7,7 +7,6 @@ export default function PreLoader({ onComplete }: { onComplete?: () => void }) {
     const [visible, setVisible] = useState(true);
 
     useEffect(() => {
-        // Total preloader duration: ~2.2s before exit animation starts
         const timer = setTimeout(() => {
             setVisible(false);
             onComplete?.();
@@ -37,11 +36,11 @@ export default function PreLoader({ onComplete }: { onComplete?: () => void }) {
                         <span className="text-4xl font-bold tracking-tight text-foreground font-[Poppins,sans-serif]">
                             JRF
                         </span>
-                        <span className="text-4xl font-bold tracking-tight text-zinc-500">.</span>
+                        <span className="text-4xl font-bold tracking-tight text-muted">.</span>
                     </motion.div>
 
                     {/* Progress bar */}
-                    <div className="mt-8 w-24 h-[2px] bg-zinc-800 rounded-full overflow-hidden">
+                    <div className="mt-8 w-24 h-[2px] bg-border rounded-full overflow-hidden">
                         <motion.div
                             className="h-full bg-foreground rounded-full"
                             initial={{ width: "0%" }}

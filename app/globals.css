@@ -12,6 +12,7 @@
   --muted-foreground: #52525b;
   --font-mono: "Iosevka Charon Mono", monospace;
   --font-sans: "Poppins", sans-serif;
+  color-scheme: light;
 }
 
 .dark {
@@ -21,6 +22,7 @@
   --border: #27272a;
   /* Softer gray for Dark Mode */
   --muted-foreground: #a1a1aa;
+  color-scheme: dark; 
 }
 
 @theme inline {

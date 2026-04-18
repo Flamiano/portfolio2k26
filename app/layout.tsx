@@ -26,8 +26,29 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="h-full antialiased dark">
+    <html lang="en" className="h-full antialiased" suppressHydrationWarning>
       <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+                (function() {
+                  try {
+                    var root = document.documentElement;
+                    var saved = localStorage.getItem('theme');
+                    var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+                    var isDark = saved === 'dark' || (!saved && prefersDark);
+                    if (isDark) {
+                      root.classList.add('dark');
+                      root.style.backgroundColor = '#000000';
+                    } else {
+                      root.classList.remove('dark');
+                      root.style.backgroundColor = '#ffffff';
+                    }
+                  } catch(e) {}
+                })();
+              `,
+          }}
+        />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link
           rel="preconnect"

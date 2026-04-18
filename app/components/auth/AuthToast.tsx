@@ -2,6 +2,7 @@
 import { useEffect } from "react";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import { toast } from "sonner";
+import { createClient } from "@/app/lib/supabase/supabase";
 
 const GoogleIcon = () => (
     <svg width="16" height="16" viewBox="0 0 48 48" style={{ flexShrink: 0 }}>
@@ -16,11 +17,16 @@ export default function AuthToast() {
     const searchParams = useSearchParams();
     const router = useRouter();
     const pathname = usePathname();
+    const supabase = createClient();
 
     useEffect(() => {
         const toastType = searchParams.get("toast");
+        if (toastType !== "signin") return;
 
-        if (toastType === "signin") {
+        // Only show the toast if there's actually an active session
+        supabase.auth.getSession().then(({ data: { session } }) => {
+            if (!session) return; // signed out — ignore the param
+
             toast("Signed in with Google", {
                 description: "Welcome back! You're now signed in.",
                 icon: <GoogleIcon />,
@@ -41,7 +47,7 @@ export default function AuthToast() {
             params.delete("toast");
             const newUrl = params.toString() ? `${pathname}?${params}` : pathname;
             router.replace(newUrl, { scroll: false });
-        }
+        });
     }, [searchParams, router, pathname]);
 
     return null;

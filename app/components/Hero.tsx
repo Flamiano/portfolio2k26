@@ -4,13 +4,32 @@ import Link from "next/link";
 import Image from "next/image";
 import { useState, useEffect } from "react";
 
-export default function Hero() {
-    const [dark, setDark] = useState(true);
-    const [hovered, setHovered] = useState(false);
+function useTheme() {
+    const [dark, setDark] = useState(false);
 
     useEffect(() => {
-        document.documentElement.classList.toggle("dark", dark);
-    }, [dark]);
+        // Read saved preference first, fall back to system preference
+        const saved = localStorage.getItem("theme");
+        const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+        const isDark = saved === "dark" || (!saved && prefersDark);
+        setDark(isDark);
+    }, []);
+
+    const toggle = () => {
+        const next = !dark;
+        setDark(next);
+        localStorage.setItem("theme", next ? "dark" : "light");
+        const root = document.documentElement;
+        root.classList.toggle("dark", next);
+        root.style.backgroundColor = next ? "#000000" : "#ffffff";
+    };
+
+    return { dark, toggle };
+}
+
+export default function Hero() {
+    const { dark, toggle } = useTheme();
+    const [hovered, setHovered] = useState(false);
 
     const profileSrc = dark
         ? hovered ? "/profile-dark-hover.jpeg" : "/profile-dark.jpeg"
@@ -66,6 +85,7 @@ export default function Hero() {
                         <a
                             href="https://calendly.com/johnroelf17/30min"
                             target="_blank"
+                            rel="noopener noreferrer"
                             className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-full bg-foreground text-background text-[9px] sm:text-xs font-semibold hover:opacity-90 transition-opacity"
                         >
                             <svg className="w-2.5 h-2.5 sm:w-3 sm:h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -98,16 +118,19 @@ export default function Hero() {
                 </div>
             </div>
 
-            {/* Dark Mode Toggle */}
+            {/* Dark / Light Mode Toggle */}
             <button
-                onClick={() => setDark(!dark)}
+                onClick={toggle}
+                aria-label="Toggle theme"
                 className="absolute top-0 right-0 z-10 w-8 h-8 sm:w-10 sm:h-10 rounded-xl border border-border bg-card flex items-center justify-center hover:border-foreground/30 transition-all text-foreground touch-manipulation"
             >
                 {dark ? (
+                    /* Moon — currently dark, click to go light */
                     <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                         <path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z" />
                     </svg>
                 ) : (
+                    /* Sun — currently light, click to go dark */
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707M17.657 17.657l-.707-.707M6.343 6.343l-.707-.707M12 8a4 4 0 100 8 4 4 0 000-8z" />
                     </svg>

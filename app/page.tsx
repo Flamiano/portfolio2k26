@@ -67,7 +67,7 @@ export default function Home() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] as const }}
-            className="min-h-screen bg-background text-foreground selection:bg-zinc-800"
+            className="min-h-screen bg-background text-foreground selection:bg-zinc-200 dark:selection:bg-zinc-800"
           >
             <div className="max-w-5xl mx-auto px-4 sm:px-6 py-12 lg:py-16">
 
