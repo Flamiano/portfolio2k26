@@ -205,7 +205,7 @@ function NewPostForm({ onSuccess }: { onSuccess: () => void }) {
             {/* Rules notice */}
             <div className="text-[10px] text-muted bg-background border border-border rounded-xl px-3 py-2 leading-relaxed">
                 <span className="font-semibold text-foreground">Community rules:</span> No offensive language —
-                Filipino or English bad words (burat, tae, puke, gago, fuck, shit, etc.) will be blocked.
+                Filipino or English bad words. will be blocked.
                 AI can suggest a cleaner version if flagged.
             </div>
 
