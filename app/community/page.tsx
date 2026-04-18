@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { ArrowLeft, Heart, Trash2, MessageCircle, Send } from "lucide-react";
+import { ArrowLeft, Heart, Trash2, MessageCircle, Send, Sparkles, RotateCcw } from "lucide-react";
 import { createClient } from "@/app/lib/supabase/supabase";
 import { useUser } from "@/app/hooks/useUser";
 import AuthModal from "@/app/components/auth/AuthModal";
@@ -36,6 +36,25 @@ type Post = {
     comments_count: number;
 };
 
+/* ── Bad word filter (client-side pre-check) ── */
+const BAD_WORDS = [
+    "burat", "tae", "puke", "gago", "gaga", "putang ina", "putangina",
+    "tangina", "punyeta", "pakshet", "pakshit", "leche", "lintik", "ulol",
+    "bobo", "boba", "inutil", "peste", "fuck", "shit", "ass", "bitch",
+    "bastard", "dick", "cock", "pussy", "cunt", "fag", "slut", "whore",
+    "motherfucker", "fucker", "fucking", "damn",
+];
+
+function containsBadWords(text: string): boolean {
+    const lower = text.toLowerCase();
+    return BAD_WORDS.some((word) => {
+        const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const regex = new RegExp(`\\b${escaped}\\b`, "i");
+        return regex.test(lower) || lower.includes(word);
+    });
+}
+
+/* ── Helpers ── */
 function timeAgo(date: string) {
     const diff = Date.now() - new Date(date).getTime();
     const mins = Math.floor(diff / 60000);
@@ -70,6 +89,325 @@ function getAvatar(post: Post | Comment) {
     return "?";
 }
 
+/* ── AI Suggestion hook ── */
+async function fetchAiSuggestion(text: string): Promise<string> {
+    const res = await fetch("/api/suggest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+    });
+    if (!res.ok) throw new Error("Suggest API error");
+    const data = await res.json();
+    return data.suggestion ?? "";
+}
+
+/* ── Post Form (sidebar) ── */
+function NewPostForm({ onSuccess }: { onSuccess: () => void }) {
+    const [title, setTitle] = useState("");
+    const [body, setBody] = useState("");
+    const [posting, setPosting] = useState(false);
+
+    // Profanity guard state
+    const [titleError, setTitleError] = useState(false);
+    const [bodyError, setBodyError] = useState(false);
+    const [suggestion, setSuggestion] = useState<{ field: "title" | "body"; text: string } | null>(null);
+    const [loadingSuggest, setLoadingSuggest] = useState(false);
+
+    const supabase = createClient();
+    const { user } = useUser();
+
+    const handlePost = async () => {
+        if (!title.trim() || !user) return;
+
+        const titleBad = containsBadWords(title);
+        const bodyBad = containsBadWords(body);
+        setTitleError(titleBad);
+        setBodyError(bodyBad);
+
+        if (titleBad || bodyBad) {
+            toast.error("Your post contains words that are not allowed.");
+            // Auto-suggest for whichever field triggered first
+            const badField = titleBad ? "title" : "body";
+            const badText = titleBad ? title : body;
+            setLoadingSuggest(true);
+            try {
+                const s = await fetchAiSuggestion(badText);
+                if (s) setSuggestion({ field: badField, text: s });
+            } catch {
+                toast.error("Could not generate AI suggestion.");
+            } finally {
+                setLoadingSuggest(false);
+            }
+            return;
+        }
+
+        setPosting(true);
+        const { error } = await supabase.from("posts").insert({ title, body, user_id: user.id });
+        if (error) {
+            toast.error("Failed to publish post: " + error.message);
+        } else {
+            toast.success("Post published!");
+            setTitle("");
+            setBody("");
+            setSuggestion(null);
+            setTitleError(false);
+            setBodyError(false);
+            onSuccess();
+        }
+        setPosting(false);
+    };
+
+    const applySuggestion = () => {
+        if (!suggestion) return;
+        if (suggestion.field === "title") setTitle(suggestion.text);
+        else setBody(suggestion.text);
+        setSuggestion(null);
+        setTitleError(false);
+        setBodyError(false);
+    };
+
+    const handleRetry = async () => {
+        if (!suggestion) return;
+        const badText = suggestion.field === "title" ? title : body;
+        setLoadingSuggest(true);
+        try {
+            const s = await fetchAiSuggestion(badText);
+            if (s) setSuggestion({ field: suggestion.field, text: s });
+        } catch {
+            toast.error("Could not generate AI suggestion.");
+        } finally {
+            setLoadingSuggest(false);
+        }
+    };
+
+    return (
+        <div className="p-4 rounded-2xl border border-border bg-card space-y-2.5">
+            <p className="text-sm font-bold text-foreground">Create Post</p>
+
+            {/* Community rules notice */}
+            <div className="text-[10px] text-muted bg-background border border-border rounded-xl px-3 py-2 leading-relaxed">
+                <span className="font-semibold text-foreground">Community rules:</span> No offensive language allowed —
+                Filipino or English bad words (burat, tae, puke, gago, fuck, shit, etc.) will be blocked.
+                Our AI can suggest a cleaner version if flagged.
+            </div>
+
+            {/* Title */}
+            <div>
+                <label className="text-[11px] text-muted mb-1 block">Title *</label>
+                <input
+                    value={title}
+                    onChange={(e) => { setTitle(e.target.value); setTitleError(false); setSuggestion(null); }}
+                    placeholder="What's on your mind?"
+                    className={`w-full bg-background border rounded-xl px-3 py-2 text-xs text-foreground placeholder:text-muted focus:outline-none transition-colors ${titleError ? "border-red-500/60 focus:border-red-500" : "border-border focus:border-foreground/30"
+                        }`}
+                />
+                {titleError && (
+                    <p className="text-[10px] text-red-500 mt-1">Title contains disallowed words.</p>
+                )}
+            </div>
+
+            {/* Body */}
+            <div>
+                <label className="text-[11px] text-muted mb-1 block">Body (optional)</label>
+                <textarea
+                    value={body}
+                    onChange={(e) => { setBody(e.target.value); setBodyError(false); setSuggestion(null); }}
+                    placeholder="Add more details..."
+                    rows={3}
+                    className={`w-full bg-background border rounded-xl px-3 py-2 text-xs text-foreground placeholder:text-muted focus:outline-none transition-colors resize-none ${bodyError ? "border-red-500/60 focus:border-red-500" : "border-border focus:border-foreground/30"
+                        }`}
+                />
+                {bodyError && (
+                    <p className="text-[10px] text-red-500 mt-1">Body contains disallowed words.</p>
+                )}
+            </div>
+
+            {/* AI Suggestion box */}
+            {(suggestion || loadingSuggest) && (
+                <div className="rounded-xl border border-border bg-background p-3 space-y-2">
+                    <div className="flex items-center gap-1.5">
+                        <Sparkles className="w-3 h-3 text-blue-500 flex-shrink-0" />
+                        <span className="text-[10px] font-bold tracking-widest text-muted uppercase mono-text">
+                            AI Suggestion — {suggestion?.field ?? "..."}
+                        </span>
+                    </div>
+                    {loadingSuggest ? (
+                        <div className="flex items-center gap-2">
+                            <div className="w-3 h-3 border-2 border-border border-t-foreground rounded-full animate-spin" />
+                            <span className="text-[11px] text-muted italic">Generating cleaner version...</span>
+                        </div>
+                    ) : suggestion ? (
+                        <>
+                            <p className="text-xs text-foreground leading-relaxed break-words">{suggestion.text}</p>
+                            <div className="flex items-center gap-2 pt-0.5">
+                                <button
+                                    onClick={applySuggestion}
+                                    className="text-[11px] font-semibold bg-foreground text-background px-3 py-1 rounded-full hover:opacity-80 transition-opacity"
+                                >
+                                    Use this
+                                </button>
+                                <button
+                                    onClick={handleRetry}
+                                    className="text-[11px] text-muted hover:text-foreground transition-colors flex items-center gap-1"
+                                >
+                                    <RotateCcw className="w-2.5 h-2.5" />
+                                    Retry
+                                </button>
+                                <button
+                                    onClick={() => { setSuggestion(null); setTitleError(false); setBodyError(false); }}
+                                    className="text-[11px] text-muted hover:text-foreground transition-colors ml-auto"
+                                >
+                                    Dismiss
+                                </button>
+                            </div>
+                        </>
+                    ) : null}
+                </div>
+            )}
+
+            <button
+                onClick={handlePost}
+                disabled={posting || !title.trim() || loadingSuggest}
+                className="w-full bg-foreground text-background py-2 rounded-xl text-xs font-semibold hover:opacity-90 disabled:opacity-50 transition-opacity"
+            >
+                {posting ? "Posting..." : "Publish Post"}
+            </button>
+        </div>
+    );
+}
+
+/* ── Comment Input with filter ── */
+function CommentInput({
+    postId,
+    user,
+    onAuthRequired,
+    onSubmitted,
+}: {
+    postId: string;
+    user: any;
+    onAuthRequired: () => void;
+    onSubmitted: () => void;
+}) {
+    const [value, setValue] = useState("");
+    const [submitting, setSubmitting] = useState(false);
+    const [error, setError] = useState(false);
+    const [suggestion, setSuggestion] = useState<string | null>(null);
+    const [loadingSuggest, setLoadingSuggest] = useState(false);
+
+    const supabase = createClient();
+
+    const handleSubmit = async () => {
+        const text = value.trim();
+        if (!text || !user) return;
+
+        if (containsBadWords(text)) {
+            setError(true);
+            setLoadingSuggest(true);
+            try {
+                const s = await fetchAiSuggestion(text);
+                if (s) setSuggestion(s);
+            } catch {
+                toast.error("Could not generate AI suggestion.");
+            } finally {
+                setLoadingSuggest(false);
+            }
+            return;
+        }
+
+        setSubmitting(true);
+        const { error: err } = await supabase
+            .from("comments")
+            .insert({ post_id: postId, user_id: user.id, body: text });
+        if (err) {
+            toast.error("Failed to post comment.");
+        } else {
+            setValue("");
+            setSuggestion(null);
+            setError(false);
+            onSubmitted();
+        }
+        setSubmitting(false);
+    };
+
+    const applySuggestion = () => {
+        if (!suggestion) return;
+        setValue(suggestion);
+        setSuggestion(null);
+        setError(false);
+    };
+
+    return (
+        <div className="px-4 sm:px-5 py-3 space-y-2">
+            <div className="flex items-center gap-2.5">
+                <div className="w-6 h-6 rounded-full bg-muted/20 border border-border flex items-center justify-center text-[10px] font-bold text-foreground flex-shrink-0">
+                    {user
+                        ? (user.user_metadata?.first_name?.[0]?.toUpperCase() || user.email?.[0]?.toUpperCase() || "?")
+                        : "?"}
+                </div>
+                <div className="flex-1 flex items-center gap-2 min-w-0">
+                    <input
+                        value={value}
+                        onChange={(e) => { setValue(e.target.value); setError(false); setSuggestion(null); }}
+                        onKeyDown={(e) => {
+                            if (e.key === "Enter" && !e.shiftKey) {
+                                e.preventDefault();
+                                if (user) handleSubmit();
+                                else onAuthRequired();
+                            }
+                        }}
+                        placeholder={user ? "Write a comment..." : "Sign in to comment..."}
+                        disabled={!user || submitting}
+                        className={`flex-1 min-w-0 bg-card border rounded-2xl px-3 py-1.5 text-xs text-foreground placeholder:text-muted focus:outline-none transition-colors disabled:opacity-60 ${error ? "border-red-500/60" : "border-border focus:border-foreground/30"
+                            }`}
+                    />
+                    <button
+                        onClick={() => { if (user) handleSubmit(); else onAuthRequired(); }}
+                        disabled={!value.trim() || submitting || loadingSuggest}
+                        className="p-1.5 rounded-xl bg-foreground text-background hover:opacity-80 disabled:opacity-40 transition-opacity flex-shrink-0"
+                    >
+                        <Send className="w-3 h-3" />
+                    </button>
+                </div>
+            </div>
+
+            {/* AI suggestion for comment */}
+            {(suggestion || loadingSuggest) && (
+                <div className="ml-8 rounded-xl border border-border bg-background p-3 space-y-2">
+                    <div className="flex items-center gap-1.5">
+                        <Sparkles className="w-3 h-3 text-blue-500 flex-shrink-0" />
+                        <span className="text-[10px] font-bold tracking-widest text-muted uppercase mono-text">AI Suggestion</span>
+                    </div>
+                    {loadingSuggest ? (
+                        <div className="flex items-center gap-2">
+                            <div className="w-3 h-3 border-2 border-border border-t-foreground rounded-full animate-spin" />
+                            <span className="text-[11px] text-muted italic">Generating cleaner version...</span>
+                        </div>
+                    ) : suggestion ? (
+                        <>
+                            <p className="text-xs text-foreground leading-relaxed break-words">{suggestion}</p>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={applySuggestion}
+                                    className="text-[11px] font-semibold bg-foreground text-background px-3 py-1 rounded-full hover:opacity-80 transition-opacity"
+                                >
+                                    Use this
+                                </button>
+                                <button
+                                    onClick={() => { setSuggestion(null); setError(false); }}
+                                    className="text-[11px] text-muted hover:text-foreground transition-colors ml-auto"
+                                >
+                                    Dismiss
+                                </button>
+                            </div>
+                        </>
+                    ) : null}
+                </div>
+            )}
+        </div>
+    );
+}
+
+/* ── Main Page ── */
 export default function CommunityPage() {
     const { user, signOut } = useUser();
     const [posts, setPosts] = useState<Post[]>([]);
@@ -78,16 +416,11 @@ export default function CommunityPage() {
     const [authOpen, setAuthOpen] = useState(false);
     const [authMode, setAuthMode] = useState<"signin" | "signup">("signup");
     const [showNewPost, setShowNewPost] = useState(false);
-    const [title, setTitle] = useState("");
-    const [body, setBody] = useState("");
-    const [posting, setPosting] = useState(false);
     const [deletingId, setDeletingId] = useState<string | null>(null);
 
     const [openComments, setOpenComments] = useState<Set<string>>(new Set());
     const [comments, setComments] = useState<Record<string, Comment[]>>({});
-    const [commentInputs, setCommentInputs] = useState<Record<string, string>>({});
     const [loadingComments, setLoadingComments] = useState<Set<string>>(new Set());
-    const [submittingComment, setSubmittingComment] = useState<Set<string>>(new Set());
 
     const supabase = createClient();
 
@@ -170,16 +503,6 @@ export default function CommunityPage() {
         if (!isOpen && !comments[postId]) await fetchComments(postId);
     };
 
-    const handleComment = async (postId: string) => {
-        const text = commentInputs[postId]?.trim();
-        if (!text || !user) return;
-        setSubmittingComment((prev) => new Set(prev).add(postId));
-        const { error } = await supabase.from("comments").insert({ post_id: postId, user_id: user.id, body: text });
-        if (error) { toast.error("Failed to post comment."); }
-        else { setCommentInputs((prev) => ({ ...prev, [postId]: "" })); await fetchComments(postId); }
-        setSubmittingComment((prev) => { const s = new Set(prev); s.delete(postId); return s; });
-    };
-
     const handleDeleteComment = async (comment: Comment) => {
         if (!user || user.id !== comment.user_id) return;
         const { error } = await supabase.from("comments").delete().eq("id", comment.id).eq("user_id", user.id);
@@ -188,15 +511,6 @@ export default function CommunityPage() {
             setComments((prev) => ({ ...prev, [comment.post_id]: (prev[comment.post_id] || []).filter((c) => c.id !== comment.id) }));
             fetchPosts();
         }
-    };
-
-    const handlePost = async () => {
-        if (!title.trim() || !user) return;
-        setPosting(true);
-        const { error } = await supabase.from("posts").insert({ title, body, user_id: user.id });
-        if (error) { toast.error("Failed to publish post: " + error.message); }
-        else { toast.success("Post published!"); setTitle(""); setBody(""); setShowNewPost(false); }
-        setPosting(false);
     };
 
     const handleDelete = async (post: Post) => {
@@ -222,69 +536,71 @@ export default function CommunityPage() {
     const isGoogleUser = user?.app_metadata?.provider === "google";
 
     return (
-        <div className="min-h-screen bg-background text-foreground selection:bg-zinc-800 pb-16">
+        <div className="min-h-screen bg-background text-foreground selection:bg-zinc-200 dark:selection:bg-zinc-800 pb-20">
+            <div className="max-w-5xl mx-auto px-4 sm:px-6">
 
-            {/* Navigation */}
-            <nav className="max-w-5xl mx-auto px-3 sm:px-4 lg:px-6 py-5 sm:py-6 flex items-center justify-between">
-                <Link href="/" className="inline-flex items-center gap-1.5 text-xs text-muted hover:text-foreground transition-colors group">
-                    <ArrowLeft className="w-3 h-3 transition-transform group-hover:-translate-x-1" />
-                    <span className="hidden xs:inline">Back to Home</span>
-                    <span className="xs:hidden">Back</span>
-                </Link>
-                {user && (
-                    <button onClick={signOut} className="text-xs border border-border px-2.5 py-1 rounded-full hover:bg-muted/20 transition-colors text-muted hover:text-foreground">
-                        Sign Out
-                    </button>
-                )}
-            </nav>
-
-            {/* Header */}
-            <header className="max-w-5xl mx-auto px-3 sm:px-4 lg:px-6 mb-6 sm:mb-8">
-                <div className="border-l-4 border-foreground pl-4 py-1">
-                    <p className="text-[9px] sm:text-[10px] font-bold tracking-[0.2em] text-muted uppercase mb-1.5 mono-text">Community · Open to All</p>
-                    <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold tracking-tighter mb-2">Community Hub</h1>
-                    <p className="text-xs sm:text-sm text-muted max-w-2xl leading-relaxed">
-                        A space for students, professionals, and developers to share ideas and connect.
-                    </p>
-                </div>
-
-                {/* Stats pills */}
-                <div className="flex flex-wrap gap-2 mt-5">
-                    <div className="px-3 py-1.5 rounded-full border border-border bg-card text-xs font-medium flex items-center gap-1.5">
-                        <span className="flex h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
-                        {posts.length} Posts
-                    </div>
-                    <div className="px-3 py-1.5 rounded-full border border-border bg-card text-xs font-medium flex items-center gap-1.5">
-                        <svg className="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
-                        </svg>
-                        {totalUsers} Members
-                    </div>
+                {/* ── Navigation ── */}
+                <nav className="flex items-center justify-between py-8">
+                    <Link
+                        href="/"
+                        className="inline-flex items-center gap-2 text-xs text-muted hover:text-foreground transition-colors group mono-text"
+                    >
+                        <ArrowLeft className="w-3.5 h-3.5 transition-transform group-hover:-translate-x-1" />
+                        Back to Home
+                    </Link>
                     {user && (
-                        <div className="px-3 py-1.5 rounded-full border border-border bg-card text-xs font-medium flex items-center gap-1.5 max-w-full overflow-hidden">
-                            <span className="w-1.5 h-1.5 rounded-full bg-blue-500 flex-shrink-0" />
-                            {isGoogleUser ? (
-                                <>
-                                    <GoogleSVG size={12} />
-                                    <span className="truncate">Google</span>
-                                </>
-                            ) : (
-                                <>
-                                    <UserSVG />
-                                    <span className="truncate">Manual</span>
-                                </>
-                            )}
-                        </div>
+                        <button
+                            onClick={signOut}
+                            className="text-xs border border-border px-3 py-1.5 rounded-full hover:bg-card transition-colors text-muted hover:text-foreground mono-text"
+                        >
+                            Sign Out
+                        </button>
                     )}
-                </div>
-            </header>
+                </nav>
 
-            {/* Layout */}
-            <div className="max-w-5xl mx-auto px-3 sm:px-4 lg:px-6">
-                <div className="flex flex-col lg:flex-row gap-4 items-start w-full min-w-0">
+                {/* ── Header ── */}
+                <header className="mb-10">
+                    <div className="border-l-4 border-foreground pl-5 py-1">
+                        <p className="text-[10px] font-bold tracking-[0.2em] text-muted uppercase mb-2 mono-text">
+                            Community · Open to All
+                        </p>
+                        <h1 className="text-4xl md:text-5xl font-bold tracking-tighter mb-3">
+                            Community Hub
+                        </h1>
+                        <p className="text-sm text-muted max-w-2xl leading-relaxed">
+                            A space for students, professionals, and developers to share ideas, ask questions, and connect.
+                        </p>
+                    </div>
+
+                    <div className="flex flex-wrap gap-3 mt-8">
+                        <div className="px-4 py-2.5 rounded-full border border-border bg-card text-xs font-medium flex items-center gap-2">
+                            <span className="flex h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
+                            {posts.length} Posts
+                        </div>
+                        <div className="px-4 py-2.5 rounded-full border border-border bg-card text-xs font-medium flex items-center gap-2">
+                            <svg className="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+                            </svg>
+                            {totalUsers} Members
+                        </div>
+                        {user && (
+                            <div className="px-4 py-2.5 rounded-full border border-border bg-card text-xs font-medium flex items-center gap-2">
+                                <span className="w-1.5 h-1.5 rounded-full bg-blue-500 flex-shrink-0" />
+                                {isGoogleUser ? (
+                                    <><GoogleSVG size={12} /><span>Google</span></>
+                                ) : (
+                                    <><UserSVG /><span>Manual</span></>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                </header>
+
+                {/* ── Layout ── */}
+                <div className="flex flex-col lg:flex-row gap-5 items-start w-full min-w-0">
 
                     {/* Sidebar */}
-                    <aside className="w-full lg:w-[260px] xl:w-[280px] lg:flex-shrink-0 space-y-3 lg:sticky lg:top-6 min-w-0">
+                    <aside className="w-full lg:w-[260px] xl:w-[280px] lg:flex-shrink-0 space-y-3 lg:sticky lg:top-8 min-w-0">
 
                         {/* Auth card */}
                         <div className="p-4 rounded-2xl border border-border bg-card">
@@ -296,9 +612,9 @@ export default function CommunityPage() {
                                         </p>
                                         {isGoogleUser && <GoogleSVG size={13} />}
                                     </div>
-                                    <p className="text-[11px] text-muted-foreground mb-0.5">You're part of the community.</p>
+                                    <p className="text-[11px] text-muted mb-0.5">You're part of the community.</p>
                                     {user.email && (
-                                        <p className="text-[11px] text-muted-foreground mb-3 font-mono truncate">{maskEmail(user.email)}</p>
+                                        <p className="text-[11px] text-muted mb-3 font-mono truncate">{maskEmail(user.email)}</p>
                                     )}
                                     <button
                                         onClick={() => setShowNewPost(!showNewPost)}
@@ -310,53 +626,39 @@ export default function CommunityPage() {
                             ) : (
                                 <>
                                     <p className="font-bold text-foreground mb-1 text-sm">Join the Community</p>
-                                    <p className="text-[11px] text-muted-foreground mb-3">Sign up to join discussions and share knowledge.</p>
-                                    <button onClick={() => { setAuthMode("signup"); setAuthOpen(true); }}
-                                        className="w-full bg-foreground text-background py-2 rounded-xl text-xs font-semibold hover:opacity-90 transition-opacity mb-2">
+                                    <p className="text-[11px] text-muted mb-3">Sign up to join discussions and share knowledge.</p>
+                                    <button
+                                        onClick={() => { setAuthMode("signup"); setAuthOpen(true); }}
+                                        className="w-full bg-foreground text-background py-2 rounded-xl text-xs font-semibold hover:opacity-90 transition-opacity mb-2"
+                                    >
                                         Register to Participate
                                     </button>
-                                    <button onClick={() => { setAuthMode("signin"); setAuthOpen(true); }}
-                                        className="w-full text-xs font-medium text-muted hover:text-foreground transition-colors">
+                                    <button
+                                        onClick={() => { setAuthMode("signin"); setAuthOpen(true); }}
+                                        className="w-full text-xs font-medium text-muted hover:text-foreground transition-colors"
+                                    >
                                         Sign In
                                     </button>
                                 </>
                             )}
                         </div>
 
-                        {/* New post form */}
+                        {/* New post form (extracted component) */}
                         {showNewPost && user && (
-                            <div className="p-4 rounded-2xl border border-border bg-card space-y-2.5">
-                                <p className="text-sm font-bold text-foreground">Create Post</p>
-                                <div>
-                                    <label className="text-[11px] text-muted-foreground mb-1 block">Title *</label>
-                                    <input value={title} onChange={(e) => setTitle(e.target.value)}
-                                        placeholder="What's on your mind?"
-                                        className="w-full bg-background border border-border rounded-xl px-3 py-2 text-xs text-foreground focus:outline-none focus:border-foreground/30 transition-colors" />
-                                </div>
-                                <div>
-                                    <label className="text-[11px] text-muted-foreground mb-1 block">Body (optional)</label>
-                                    <textarea value={body} onChange={(e) => setBody(e.target.value)}
-                                        placeholder="Add more details..." rows={3}
-                                        className="w-full bg-background border border-border rounded-xl px-3 py-2 text-xs text-foreground focus:outline-none focus:border-foreground/30 transition-colors resize-none" />
-                                </div>
-                                <button onClick={handlePost} disabled={posting || !title.trim()}
-                                    className="w-full bg-foreground text-background py-2 rounded-xl text-xs font-semibold hover:opacity-90 disabled:opacity-50 transition-opacity">
-                                    {posting ? "Posting..." : "Publish Post"}
-                                </button>
-                            </div>
+                            <NewPostForm onSuccess={() => setShowNewPost(false)} />
                         )}
 
-                        {/* Stats */}
+                        {/* Hub Stats */}
                         <div className="p-4 rounded-2xl border border-border bg-card">
-                            <p className="font-bold text-foreground mb-2.5 text-xs uppercase tracking-wider text-muted-foreground">Hub Stats</p>
+                            <p className="text-[10px] font-bold tracking-[0.2em] text-muted uppercase mb-3 mono-text">Hub Stats</p>
                             <div className="space-y-2">
                                 <div className="flex justify-between items-center">
-                                    <span className="text-xs text-muted-foreground">Total Posts</span>
+                                    <span className="text-xs text-muted">Total Posts</span>
                                     <span className="text-sm font-bold text-foreground">{posts.length}</span>
                                 </div>
                                 <div className="h-px bg-border" />
                                 <div className="flex justify-between items-center">
-                                    <span className="text-xs text-muted-foreground">Total Users</span>
+                                    <span className="text-xs text-muted">Total Users</span>
                                     <span className="text-sm font-bold text-foreground">{totalUsers}</span>
                                 </div>
                             </div>
@@ -367,24 +669,30 @@ export default function CommunityPage() {
                     <main className="w-full lg:flex-1 min-w-0 space-y-3">
 
                         {/* Tabs */}
-                        <div className="flex gap-4 border-b border-border pb-2.5">
+                        <div className="flex gap-5 border-b border-border pb-3">
                             {(["latest", "discussed"] as const).map((t) => (
-                                <button key={t} onClick={() => setTab(t)}
-                                    className={`text-xs font-semibold capitalize pb-0.5 border-b-2 transition-colors ${tab === t ? "text-foreground border-foreground" : "text-muted-foreground border-transparent hover:text-foreground"}`}>
+                                <button
+                                    key={t}
+                                    onClick={() => setTab(t)}
+                                    className={`text-xs font-semibold pb-0.5 border-b-2 transition-colors mono-text ${tab === t
+                                        ? "text-foreground border-foreground"
+                                        : "text-muted border-transparent hover:text-foreground"
+                                        }`}
+                                >
                                     {t === "latest" ? "Latest" : "Most Discussed"}
                                 </button>
                             ))}
                         </div>
 
-                        <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                        <div className="flex items-center gap-2 text-[11px] text-muted mono-text">
                             <span className="w-1.5 h-1.5 rounded-full bg-blue-500 inline-block flex-shrink-0" />
-                            <span className="font-semibold uppercase tracking-wider">Global Feed</span>
+                            Global Feed
                         </div>
 
                         {posts.length === 0 ? (
-                            <div className="p-8 rounded-2xl border border-border bg-card text-center">
-                                <p className="text-muted-foreground text-sm">No posts yet.</p>
-                                <p className="text-muted-foreground/60 text-xs mt-1">Be the first to start a discussion!</p>
+                            <div className="p-10 rounded-2xl border border-border bg-card text-center">
+                                <p className="text-muted text-sm">No posts yet.</p>
+                                <p className="text-muted/60 text-xs mt-1">Be the first to start a discussion!</p>
                             </div>
                         ) : (
                             posts.map((post) => {
@@ -392,42 +700,47 @@ export default function CommunityPage() {
                                 const commentsOpen = openComments.has(post.id);
                                 const postComments = comments[post.id] || [];
                                 const isLoadingComments = loadingComments.has(post.id);
-                                const isSubmitting = submittingComment.has(post.id);
 
                                 return (
                                     <div key={post.id} className="rounded-2xl border border-border bg-card hover:border-foreground/20 transition-all overflow-hidden w-full">
 
-                                        {/* Post body */}
-                                        <div className="p-3.5 sm:p-4">
-                                            {/* Author Row */}
-                                            <div className="flex items-start justify-between gap-2 mb-2.5 min-w-0">
+                                        {/* Post content */}
+                                        <div className="p-4 sm:p-5">
+
+                                            {/* Author row */}
+                                            <div className="flex items-start justify-between gap-2 mb-3 min-w-0">
                                                 <div className="flex items-center gap-2 min-w-0 flex-1">
-                                                    {/* Avatar */}
-                                                    <div className="w-7 h-7 rounded-full bg-muted/30 border border-border flex items-center justify-center text-[11px] font-bold text-foreground flex-shrink-0">
+                                                    <div className="w-7 h-7 rounded-full bg-muted/20 border border-border flex items-center justify-center text-[11px] font-bold text-foreground flex-shrink-0">
                                                         {getAvatar(post)}
                                                     </div>
-                                                    {/* Name + time */}
                                                     <div className="flex flex-col min-w-0 flex-1">
                                                         <div className="flex items-center gap-1 flex-wrap min-w-0">
-                                                            <span className="text-xs font-semibold text-foreground truncate max-w-[120px] sm:max-w-[200px]">{getDisplayName(post)}</span>
+                                                            <span className="text-xs font-semibold text-foreground truncate max-w-[140px] sm:max-w-[220px]">
+                                                                {getDisplayName(post)}
+                                                            </span>
                                                             <svg className="w-3 h-3 text-blue-500 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
                                                                 <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                                                             </svg>
                                                             {isOwner && (
-                                                                <span className="text-[9px] bg-foreground text-background px-1.5 py-0.5 rounded-full font-semibold flex-shrink-0">you</span>
+                                                                <span className="text-[9px] bg-foreground text-background px-1.5 py-0.5 rounded-full font-semibold flex-shrink-0">
+                                                                    you
+                                                                </span>
                                                             )}
                                                         </div>
                                                         <div className="flex items-center gap-1 flex-wrap min-w-0">
-                                                            <span className="text-[11px] text-muted-foreground flex-shrink-0">{timeAgo(post.created_at)}</span>
+                                                            <span className="text-[11px] text-muted mono-text flex-shrink-0">{timeAgo(post.created_at)}</span>
                                                             {post.profiles?.role && (
-                                                                <span className="text-[11px] text-muted-foreground italic truncate">· {post.profiles.role}</span>
+                                                                <span className="text-[11px] text-muted italic truncate">· {post.profiles.role}</span>
                                                             )}
                                                         </div>
                                                     </div>
                                                 </div>
                                                 {isOwner && (
-                                                    <button onClick={() => handleDelete(post)} disabled={deletingId === post.id}
-                                                        className="flex-shrink-0 p-1.5 rounded-lg text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-all disabled:opacity-50">
+                                                    <button
+                                                        onClick={() => handleDelete(post)}
+                                                        disabled={deletingId === post.id}
+                                                        className="flex-shrink-0 p-1.5 rounded-lg text-muted hover:text-red-500 hover:bg-red-500/10 transition-all disabled:opacity-50"
+                                                    >
                                                         <Trash2 className="w-3 h-3" />
                                                     </button>
                                                 )}
@@ -436,18 +749,22 @@ export default function CommunityPage() {
                                             {/* Title & body */}
                                             <h3 className="font-bold text-foreground mb-1 leading-snug text-sm break-words">{post.title}</h3>
                                             {post.body && (
-                                                <p className="text-xs text-muted-foreground line-clamp-3 leading-relaxed break-words">{post.body}</p>
+                                                <p className="text-xs text-muted line-clamp-3 leading-relaxed break-words">{post.body}</p>
                                             )}
 
                                             {/* Reaction bar */}
-                                            <div className="flex items-center gap-3 mt-3 pt-2.5 border-t border-border">
-                                                <button onClick={() => handleLike(post)}
-                                                    className={`flex items-center gap-1 text-xs transition-colors group ${post.liked_by_me ? "text-red-500" : "text-muted-foreground hover:text-red-500"}`}>
+                                            <div className="flex items-center gap-4 mt-3 pt-3 border-t border-border">
+                                                <button
+                                                    onClick={() => handleLike(post)}
+                                                    className={`flex items-center gap-1.5 text-xs transition-colors group ${post.liked_by_me ? "text-red-500" : "text-muted hover:text-red-500"}`}
+                                                >
                                                     <Heart className={`w-3.5 h-3.5 transition-all ${post.liked_by_me ? "fill-red-500 scale-110" : "group-hover:scale-110"}`} />
                                                     <span>{post.likes_count}</span>
                                                 </button>
-                                                <button onClick={() => toggleComments(post.id)}
-                                                    className={`flex items-center gap-1 text-xs transition-colors group ${commentsOpen ? "text-blue-500" : "text-muted-foreground hover:text-blue-500"}`}>
+                                                <button
+                                                    onClick={() => toggleComments(post.id)}
+                                                    className={`flex items-center gap-1.5 text-xs transition-colors group ${commentsOpen ? "text-blue-500" : "text-muted hover:text-blue-500"}`}
+                                                >
                                                     <MessageCircle className={`w-3.5 h-3.5 transition-all group-hover:scale-110 ${commentsOpen ? "fill-blue-500/20" : ""}`} />
                                                     <span>{post.comments_count}</span>
                                                 </button>
@@ -458,70 +775,51 @@ export default function CommunityPage() {
                                         {commentsOpen && (
                                             <div className="border-t border-border bg-background/50">
 
-                                                {/* Comment input */}
-                                                <div className="px-3.5 sm:px-4 py-2.5 flex items-center gap-2">
-                                                    <div className="w-6 h-6 rounded-full bg-muted/30 border border-border flex items-center justify-center text-[10px] font-bold text-foreground flex-shrink-0">
-                                                        {user ? (user.user_metadata?.first_name?.[0]?.toUpperCase() || user.email?.[0]?.toUpperCase() || "?") : "?"}
-                                                    </div>
-                                                    <div className="flex-1 flex items-center gap-1.5 min-w-0">
-                                                        <input
-                                                            value={commentInputs[post.id] || ""}
-                                                            onChange={(e) => setCommentInputs((prev) => ({ ...prev, [post.id]: e.target.value }))}
-                                                            onKeyDown={(e) => {
-                                                                if (e.key === "Enter" && !e.shiftKey) {
-                                                                    e.preventDefault();
-                                                                    if (user) handleComment(post.id);
-                                                                    else { setAuthMode("signin"); setAuthOpen(true); }
-                                                                }
-                                                            }}
-                                                            placeholder={user ? "Write a comment..." : "Sign in to comment..."}
-                                                            disabled={!user || isSubmitting}
-                                                            className="flex-1 min-w-0 bg-card border border-border rounded-2xl px-3 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-foreground/30 transition-colors disabled:opacity-60"
-                                                        />
-                                                        <button
-                                                            onClick={() => {
-                                                                if (user) handleComment(post.id);
-                                                                else { setAuthMode("signin"); setAuthOpen(true); }
-                                                            }}
-                                                            disabled={!commentInputs[post.id]?.trim() || isSubmitting}
-                                                            className="p-1.5 rounded-xl bg-foreground text-background hover:opacity-80 disabled:opacity-40 transition-opacity flex-shrink-0"
-                                                        >
-                                                            <Send className="w-3 h-3" />
-                                                        </button>
-                                                    </div>
-                                                </div>
+                                                {/* Comment input (extracted component with filter) */}
+                                                <CommentInput
+                                                    postId={post.id}
+                                                    user={user}
+                                                    onAuthRequired={() => { setAuthMode("signin"); setAuthOpen(true); }}
+                                                    onSubmitted={() => fetchComments(post.id)}
+                                                />
 
                                                 {/* Comments list */}
-                                                <div className="px-3.5 sm:px-4 pb-3.5 space-y-2.5 max-h-64 overflow-y-auto">
+                                                <div className="px-4 sm:px-5 pb-4 space-y-3 max-h-64 overflow-y-auto">
                                                     {isLoadingComments ? (
                                                         <div className="flex items-center justify-center py-5">
                                                             <div className="w-3.5 h-3.5 border-2 border-border border-t-foreground rounded-full animate-spin" />
                                                         </div>
                                                     ) : postComments.length === 0 ? (
-                                                        <p className="text-[11px] text-muted-foreground text-center py-3">No comments yet. Be the first!</p>
+                                                        <p className="text-[11px] text-muted text-center py-3">No comments yet. Be the first!</p>
                                                     ) : (
                                                         postComments.map((comment) => {
                                                             const isMyComment = user?.id === comment.user_id;
                                                             return (
                                                                 <div key={comment.id} className="flex items-start gap-2 group min-w-0">
-                                                                    <div className="w-6 h-6 rounded-full bg-muted/30 border border-border flex items-center justify-center text-[10px] font-bold text-foreground flex-shrink-0 mt-0.5">
+                                                                    <div className="w-6 h-6 rounded-full bg-muted/20 border border-border flex items-center justify-center text-[10px] font-bold text-foreground flex-shrink-0 mt-0.5">
                                                                         {getAvatar(comment)}
                                                                     </div>
                                                                     <div className="flex-1 min-w-0">
                                                                         <div className="bg-card rounded-2xl rounded-tl-sm px-3 py-2">
                                                                             <div className="flex items-center gap-1 mb-0.5 flex-wrap min-w-0">
-                                                                                <span className="text-[11px] font-semibold text-foreground truncate">{getDisplayName(comment)}</span>
+                                                                                <span className="text-[11px] font-semibold text-foreground truncate">
+                                                                                    {getDisplayName(comment)}
+                                                                                </span>
                                                                                 {isMyComment && (
-                                                                                    <span className="text-[9px] bg-foreground text-background px-1 py-0.5 rounded-full font-semibold flex-shrink-0">you</span>
+                                                                                    <span className="text-[9px] bg-foreground text-background px-1 py-0.5 rounded-full font-semibold flex-shrink-0">
+                                                                                        you
+                                                                                    </span>
                                                                                 )}
                                                                             </div>
                                                                             <p className="text-xs text-foreground leading-relaxed break-words">{comment.body}</p>
                                                                         </div>
                                                                         <div className="flex items-center gap-2.5 mt-0.5 px-1">
-                                                                            <span className="text-[10px] text-muted-foreground">{timeAgo(comment.created_at)}</span>
+                                                                            <span className="text-[10px] text-muted mono-text">{timeAgo(comment.created_at)}</span>
                                                                             {isMyComment && (
-                                                                                <button onClick={() => handleDeleteComment(comment)}
-                                                                                    className="text-[10px] text-muted-foreground hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100">
+                                                                                <button
+                                                                                    onClick={() => handleDeleteComment(comment)}
+                                                                                    className="text-[10px] text-muted hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
+                                                                                >
                                                                                     Delete
                                                                                 </button>
                                                                             )}
@@ -547,7 +845,7 @@ export default function CommunityPage() {
     );
 }
 
-/* ── Inline SVG helpers to avoid repeating markup ── */
+/* ── Inline SVG helpers ── */
 function GoogleSVG({ size = 14 }: { size?: number }) {
     return (
         <svg width={size} height={size} viewBox="0 0 48 48" style={{ flexShrink: 0 }}>
@@ -562,7 +860,8 @@ function GoogleSVG({ size = 14 }: { size?: number }) {
 function UserSVG() {
     return (
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" />
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+            <circle cx="12" cy="7" r="4" />
         </svg>
     );
 }

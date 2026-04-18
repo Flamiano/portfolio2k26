@@ -8,19 +8,18 @@ import { certificates } from "@/app/lib/certificates";
 export default function CertificationsPage() {
     return (
         <div className="min-h-screen bg-background text-foreground selection:bg-zinc-800 pb-20">
-
-            {/* Navigation */}
-            <nav className="max-w-5xl mx-auto px-4 sm:px-6 py-8">
-                <Link
-                    href="/"
-                    className="inline-flex items-center gap-2 text-xs text-muted hover:text-foreground transition-colors group"
-                >
-                    <ArrowLeft className="w-3.5 h-3.5 transition-transform group-hover:-translate-x-1" />
-                    Back to Home
-                </Link>
-            </nav>
-
             <div className="max-w-5xl mx-auto px-4 sm:px-6">
+
+                {/* Navigation */}
+                <nav className="py-8">
+                    <Link
+                        href="/"
+                        className="inline-flex items-center gap-2 text-xs text-muted hover:text-foreground transition-colors group mono-text"
+                    >
+                        <ArrowLeft className="w-3.5 h-3.5 transition-transform group-hover:-translate-x-1" />
+                        Back to Home
+                    </Link>
+                </nav>
 
                 {/* Header */}
                 <header className="mb-12">
